@@ -198,6 +198,41 @@ docker compose up -d --build frontend
 docker compose up -d --build backend
 ```
 
+## 🔒 Развёртывание в закрытой сети (Air-Gapped)
+
+Для организаций без доступа к интернету доступно развёртывание с локальной моделью Qwen3.
+
+### Быстрый старт для закрытой сети:
+
+**На машине с интернетом:**
+```bash
+# Подготовьте всё для переноса
+bash scripts/prepare-airgap.sh
+```
+
+**На закрытой машине:**
+```bash
+# Разверните после переноса файлов
+bash scripts/deploy-airgap.sh
+```
+
+### Подробная документация:
+Смотрите [AIRGAP_DEPLOYMENT.md](./AIRGAP_DEPLOYMENT.md) для полной инструкции.
+
+### Варианты локального развёртывания:
+
+| Вариант | Команда | Требования |
+|---------|---------|------------|
+| **Ollama** (проще) | `docker compose -f docker-compose.local.yml up -d` | 16+ GB RAM, GPU опционально |
+| **vLLM** (production) | `docker compose -f docker-compose.vllm.yml up -d` | 32+ GB RAM, NVIDIA GPU обязательно |
+
+### Проверка работоспособности:
+```bash
+bash scripts/check-local.sh
+```
+
+---
+
 ## 📄 Лицензия
 
 MIT

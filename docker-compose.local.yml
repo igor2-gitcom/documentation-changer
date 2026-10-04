@@ -1,0 +1,120 @@
+# ============================================
+# Docker Compose - Локальная модель (Ollama)
+# ============================================
+# Для закрытой сети без доступа к интернету
+#
+# Запуск: docker compose -f docker-compose.local.yml up -d
+# Модель должна быть предварительно загружена в ~/ollama-data/models/
+
+version: '3.8'
+
+services:
+  # ------------------------------------------
+  # Ollama - Локальный LLM сервер
+  # ------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: qwen3-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - qwen3-local-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    # Если нет GPU, закомментируйте секцию deploy выше
+
+  # ------------------------------------------
+  # Backend - API proxy
+  # ------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: qwen3-docs-backend-local
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      # Ollama не требует ключа, но нужен для совместимости
+      - QWEN_API_KEY=ollama
+      - QWEN_BASE_URL=http://ollama:11434/v1
+      - QWEN_MODEL=${QWEN_MODEL:-qwen3:8b}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - qwen3-local-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+  # ------------------------------------------
+  # Frontend - React + Vite (nginx)
+  # ------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qwen3-docs-frontend-local
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - qwen3-local-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # ------------------------------------------
+  # Open WebUI - Веб-интерфейс для Ollama (опционально)
+  # ------------------------------------------
+  # open-webui:
+  #   image: ghcr.io/open-webui/open-webui:main
+  #   container_name: qwen3-open-webui
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     - OLLAMA_BASE_URL=http://ollama:11434
+  #   volumes:
+  #     - open-webui-data:/app/backend/data
+  #   depends_on:
+  #     - ollama
+  #   networks:
+  #     - qwen3-local-network
+
+volumes:
+  ollama-data:
+    driver: local
+  # open-webui-data:
+  #   driver: local
+
+networks:
+  qwen3-local-network:
+    driver: bridge
