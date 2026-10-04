@@ -1,14 +1,36 @@
-import { useState } from 'react';
-import { Settings, Key, Globe, Cpu } from 'lucide-react';
-import { QwenConfig } from '../types';
+import { useState, useEffect } from 'react';
+import { Settings, CheckCircle2, AlertCircle, Server } from 'lucide-react';
 
-interface QwenSettingsProps {
-  config: QwenConfig;
-  onConfigChange: (config: QwenConfig) => void;
+interface BackendStatus {
+  status: string;
+  model: string;
+  apiKeyConfigured: boolean;
+  timestamp: string;
 }
 
-export default function QwenSettings({ config, onConfigChange }: QwenSettingsProps) {
+export default function QwenSettings() {
   const [isOpen, setIsOpen] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    checkBackendHealth();
+  }, []);
+
+  const checkBackendHealth = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/health');
+      if (response.ok) {
+        const data = await response.json();
+        setBackendStatus(data);
+      }
+    } catch (error) {
+      console.error('Backend health check failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -17,82 +39,94 @@ export default function QwenSettings({ config, onConfigChange }: QwenSettingsPro
         className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <Settings className="w-5 h-5 text-gray-600" />
+          <Server className="w-5 h-5 text-gray-600" />
           <div className="text-left">
-            <h3 className="text-sm font-semibold text-gray-800">Настройки Qwen3</h3>
+            <h3 className="text-sm font-semibold text-gray-800">Статус Backend</h3>
             <p className="text-xs text-gray-500">
-              {config.apiKey ? 'API ключ настроен' : 'Демо-режим (без API ключа)'}
+              {loading ? 'Проверка...' : backendStatus ? 'Подключено' : 'Недоступен'}
             </p>
           </div>
         </div>
-        <div className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`}>
-          <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+        <div className="flex items-center gap-2">
+          {backendStatus && (
+            <div className={`w-2 h-2 rounded-full ${
+              backendStatus.apiKeyConfigured ? 'bg-green-500' : 'bg-yellow-500'
+            }`} />
+          )}
+          <div className={`transform transition-transform ${isOpen ? 'rotate-180' : ''}`}>
+            <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
         </div>
       </button>
 
       {isOpen && (
         <div className="border-t border-gray-100 p-4 space-y-4 bg-gray-50/50">
-          <div>
-            <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-1.5">
-              <Key className="w-3 h-3" />
-              API ключ Qwen (DashScope)
-            </label>
-            <input
-              type="password"
-              value={config.apiKey}
-              onChange={(e) => onConfigChange({ ...config, apiKey: e.target.value })}
-              placeholder="sk-..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <p className="text-[10px] text-gray-400 mt-1">
-              Получите ключ на dashscope.aliyuncs.com. Без ключа используется демо-режим.
-            </p>
-          </div>
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              Проверка соединения...
+            </div>
+          ) : backendStatus ? (
+            <>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-600">Статус</span>
+                  <span className="flex items-center gap-1 text-xs text-green-600">
+                    <CheckCircle2 className="w-3 h-3" />
+                    {backendStatus.status}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-600">Модель</span>
+                  <span className="text-xs font-mono text-gray-800 bg-gray-100 px-2 py-0.5 rounded">
+                    {backendStatus.model}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-600">API ключ</span>
+                  {backendStatus.apiKeyConfigured ? (
+                    <span className="flex items-center gap-1 text-xs text-green-600">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Настроен
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-yellow-600">
+                      <AlertCircle className="w-3 h-3" />
+                      Демо-режим
+                    </span>
+                  )}
+                </div>
+              </div>
 
-          <div>
-            <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-1.5">
-              <Cpu className="w-3 h-3" />
-              Модель
-            </label>
-            <select
-              value={config.model}
-              onChange={(e) => onConfigChange({ ...config, model: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="qwen3">Qwen3 (последняя)</option>
-              <option value="qwen3-235b-a22b">Qwen3-235B-A22B</option>
-              <option value="qwen3-32b">Qwen3-32B</option>
-              <option value="qwen3-30b-a3b">Qwen3-30B-A3B</option>
-              <option value="qwen3-14b">Qwen3-14B</option>
-              <option value="qwen3-8b">Qwen3-8B</option>
-              <option value="qwen3-4b">Qwen3-4B</option>
-              <option value="qwen3-1.7b">Qwen3-1.7B</option>
-              <option value="qwen3-0.6b">Qwen3-0.6B</option>
-            </select>
-          </div>
+              {!backendStatus.apiKeyConfigured && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-xs text-amber-700">
+                    <strong>Демо-режим:</strong> Для полноценной работы укажите QWEN_API_KEY 
+                    в переменных окружения Docker.
+                  </p>
+                </div>
+              )}
 
-          <div>
-            <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-1.5">
-              <Globe className="w-3 h-3" />
-              Базовый URL API
-            </label>
-            <input
-              type="url"
-              value={config.baseUrl}
-              onChange={(e) => onConfigChange({ ...config, baseUrl: e.target.value })}
-              placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-
-          {!config.apiKey && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-xs text-amber-700">
-                <strong>Демо-режим:</strong> Без API ключа приложение работает с предзаданными действиями. 
-                Для полноценной работы с Qwen3 укажите API ключ DashScope.
+              <button
+                onClick={checkBackendHealth}
+                className="w-full px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Обновить статус
+              </button>
+            </>
+          ) : (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-xs text-red-700">
+                <strong>Ошибка:</strong> Backend недоступен. Убедитесь, что сервис запущен.
               </p>
+              <button
+                onClick={checkBackendHealth}
+                className="mt-2 text-xs text-red-600 underline"
+              >
+                Попробовать снова
+              </button>
             </div>
           )}
         </div>

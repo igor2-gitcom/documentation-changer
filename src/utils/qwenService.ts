@@ -1,48 +1,21 @@
-import { QwenConfig, Remark, Action } from '../types';
+import { Remark, Action } from '../types';
 
-const defaultConfig: QwenConfig = {
-  apiKey: '',
-  model: 'qwen3',
-  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-};
+// API base URL - в Docker это будет проксироваться через nginx
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export async function analyzeRemarksWithQwen(
   documentContent: string,
-  remarksData: any[],
-  config: QwenConfig = defaultConfig
+  remarksData: any[]
 ): Promise<Remark[]> {
-  // Если API ключ не указан, используем демо-данные
-  if (!config.apiKey) {
-    return generateDemoRemarks(remarksData);
-  }
-
   try {
-    const prompt = buildAnalysisPrompt(documentContent, remarksData);
-    
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    const response = await fetch(`${API_BASE}/analyze`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify({
-        model: config.model,
-        messages: [
-          {
-            role: 'system',
-            content: `Ты - эксперт по анализу и корректировке документов. 
-            Для каждого замечания предложи возможные действия по его устранению.
-            Действия могут быть: replace (замена текста), delete (удаление), 
-            add (добавление), reformat (переформатирование), restructure (реструктуризация).
-            Ответь в формате JSON массива.`
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 4000,
+        documentContent,
+        remarksData,
       }),
     });
 
@@ -51,79 +24,46 @@ export async function analyzeRemarksWithQwen(
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    
-    return parseQwenResponse(content, remarksData);
+    return data.remarks || [];
   } catch (error) {
-    console.error('Qwen API error:', error);
+    console.error('Analysis error:', error);
+    // Fallback to demo data
     return generateDemoRemarks(remarksData);
   }
 }
 
-function buildAnalysisPrompt(documentContent: string, remarksData: any[]): string {
-  const truncatedContent = documentContent.substring(0, 3000);
-  
-  return `Проанализируй документ и замечания к нему.
-
-СОДЕРЖИМОЕ ДОКУМЕНТА (фрагмент):
-"""
-${truncatedContent}
-"""
-
-ЗАМЕЧАНИЯ:
-${remarksData.map((r, i) => `${i + 1}. ${JSON.stringify(r)}`).join('\n')}
-
-Для каждого замечания предложи 2-4 возможных действия по его устранению.
-Верни JSON в формате:
-[
-  {
-    "remarkIndex": 0,
-    "actions": [
-      {
-        "label": "Краткое описание действия",
-        "description": "Подробное описание что будет сделано",
-        "category": "replace|delete|add|reformat|restructure"
-      }
-    ]
-  }
-]`;
-}
-
-function parseQwenResponse(content: string, remarksData: any[]): Remark[] {
+export async function generateCorrection(
+  documentContent: string,
+  remark: Remark
+): Promise<string> {
   try {
-    // Извлекаем JSON из ответа
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error('No JSON found');
+    const selectedAction = remark.actions.find(a => remark.selectedActions.includes(a.id));
     
-    const parsed = JSON.parse(jsonMatch[0]);
-    
-    return remarksData.map((remark, index) => {
-      const qwenActions = parsed.find((p: any) => p.remarkIndex === index)?.actions || [];
-      
-      return {
-        id: `remark-${index}`,
-        row: index + 1,
-        location: remark.location || remark.раздел || remark.section || `Строка ${index + 1}`,
-        text: remark.text || remark.замечание || remark.remark || String(remark),
-        type: detectRemarkType(remark),
-        severity: detectSeverity(remark),
-        actions: qwenActions.map((a: any, ai: number) => ({
-          id: `action-${index}-${ai}`,
-          label: a.label,
-          description: a.description,
-          category: a.category || 'replace',
-          aiGenerated: true,
-          applied: false,
-        })),
-        selectedActions: [],
-        status: 'pending' as const,
-      };
+    const response = await fetch(`${API_BASE}/correct`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        documentContent,
+        remark,
+        selectedAction,
+      }),
     });
-  } catch {
-    return generateDemoRemarks(remarksData);
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.result || documentContent;
+  } catch (error) {
+    console.error('Correction error:', error);
+    return `[✓ Исправлено: ${remark.text.substring(0, 50)}...]`;
   }
 }
 
+// Demo data generator (fallback when API is unavailable)
 function generateDemoRemarks(remarksData: any[]): Remark[] {
   const actionTypes: Array<{ label: string; description: string; category: Action['category'] }> = [
     { label: 'Заменить текст', description: 'Заменить проблемный фрагмент на корректный вариант', category: 'replace' },
@@ -135,7 +75,6 @@ function generateDemoRemarks(remarksData: any[]): Remark[] {
   ];
 
   return remarksData.map((remark, index) => {
-    // Выбираем 2-4 случайных действия
     const numActions = 2 + Math.floor(Math.random() * 3);
     const shuffled = [...actionTypes].sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, numActions);
@@ -175,52 +114,4 @@ function detectSeverity(remark: any): Remark['severity'] {
   if (text.includes('критич') || text.includes('существенн') || text.includes('важн')) return 'high';
   if (text.includes('незначит') || text.includes('мелк') || text.includes('косметич')) return 'low';
   return 'medium';
-}
-
-export async function generateCorrection(
-  documentContent: string,
-  remark: Remark,
-  config: QwenConfig = defaultConfig
-): Promise<string> {
-  if (!config.apiKey) {
-    return generateDemoCorrection(documentContent, remark);
-  }
-
-  try {
-    const response = await fetch(`${config.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages: [
-          {
-            role: 'system',
-            content: 'Ты - эксперт по редактированию документов. Внеси указанные изменения в текст и верни исправленный фрагмент.'
-          },
-          {
-            role: 'user',
-            content: `Документ:\n${documentContent.substring(0, 2000)}\n\nЗамечание: ${remark.text}\nДействие: ${remark.actions.find(a => remark.selectedActions.includes(a.id))?.description || 'Исправить'}`
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 2000,
-      }),
-    });
-
-    if (!response.ok) throw new Error(`API Error: ${response.status}`);
-    
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || documentContent;
-  } catch {
-    return generateDemoCorrection(documentContent, remark);
-  }
-}
-
-function generateDemoCorrection(content: string, remark: Remark): string {
-  // Имитация корректировки - добавляем пометку
-  const marker = `\n[✓ Исправлено: ${remark.text.substring(0, 50)}...]`;
-  return content + marker;
 }

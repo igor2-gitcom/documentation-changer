@@ -1,0 +1,55 @@
+# ============================================
+# Docker Compose - Development Mode
+# ============================================
+# Запуск: docker compose -f docker-compose.dev.yml up -d
+
+version: '3.8'
+
+services:
+  # ------------------------------------------
+  # Frontend - Vite dev server (hot reload)
+  # ------------------------------------------
+  frontend:
+    image: node:20-alpine
+    container_name: qwen3-docs-frontend-dev
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:3001
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    depends_on:
+      - backend
+    networks:
+      - qwen3-dev-network
+
+  # ------------------------------------------
+  # Backend - Node.js with watch mode
+  # ------------------------------------------
+  backend:
+    image: node:20-alpine
+    container_name: qwen3-docs-backend-dev
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+      - QWEN_API_KEY=${QWEN_API_KEY:-}
+      - QWEN_BASE_URL=${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      - QWEN_MODEL=${QWEN_MODEL:-qwen3}
+      - CORS_ORIGIN=http://localhost:5173
+    command: sh -c "npm install && npm run dev"
+    networks:
+      - qwen3-dev-network
+
+networks:
+  qwen3-dev-network:
+    driver: bridge

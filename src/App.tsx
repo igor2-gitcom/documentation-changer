@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { FileText, ArrowRight, ArrowLeft, Brain, CheckCircle2, Download } from 'lucide-react';
-import { Remark, QwenConfig, Step } from './types';
+import { Remark, Step } from './types';
 import FileUpload from './components/FileUpload';
 import RemarksTable from './components/RemarksTable';
 import DocumentPreview from './components/DocumentPreview';
@@ -18,11 +18,6 @@ const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<Step>('upload');
-  const [qwenConfig, setQwenConfig] = useState<QwenConfig>({
-    apiKey: '',
-    model: 'qwen3',
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  });
   const [confluenceUrl, setConfluenceUrl] = useState('');
   const [documentContent, setDocumentContent] = useState('');
   const [documentFileName, setDocumentFileName] = useState('');
@@ -61,7 +56,7 @@ export default function App() {
     }, 500);
 
     try {
-      const analyzedRemarks = await analyzeRemarksWithQwen(documentContent, remarksData, qwenConfig);
+      const analyzedRemarks = await analyzeRemarksWithQwen(documentContent, remarksData);
       setRemarks(analyzedRemarks);
       setAnalysisProgress(100);
       
@@ -75,7 +70,7 @@ export default function App() {
     } finally {
       clearInterval(progressInterval);
     }
-  }, [documentContent, remarksData, qwenConfig]);
+  }, [documentContent, remarksData]);
 
   const handleToggleAction = useCallback((remarkId: string, actionId: string) => {
     setRemarks(prev => prev.map(r => {
@@ -120,7 +115,7 @@ export default function App() {
     // Генерируем корректировку
     const remark = remarks.find(r => r.id === remarkId);
     if (remark) {
-      const result = await generateCorrection(documentContent, remark, qwenConfig);
+      const result = await generateCorrection(documentContent, remark);
       const selectedAction = remark.actions.find(a => remark.selectedActions.includes(a.id));
       
       setCorrections(prev => [...prev, {
@@ -129,7 +124,7 @@ export default function App() {
         result: result.substring(0, 200),
       }]);
     }
-  }, [remarks, documentContent, qwenConfig]);
+  }, [remarks, documentContent]);
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
@@ -217,7 +212,7 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Sidebar with settings */}
           <div className="lg:col-span-1 space-y-4">
-            <QwenSettings config={qwenConfig} onConfigChange={setQwenConfig} />
+            <QwenSettings />
             
             {/* Info panel */}
             <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
