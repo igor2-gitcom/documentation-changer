@@ -198,6 +198,50 @@ docker compose up -d --build frontend
 docker compose up -d --build backend
 ```
 
+## 💻 Запуск БЕЗ GPU (только CPU)
+
+Для запуска на обычном компьютере без видеокарты:
+
+### Быстрый старт:
+
+```bash
+# Автоматическая настройка и запуск
+bash scripts/start-cpu.sh
+```
+
+### Или вручную:
+
+```bash
+# 1. Запуск без GPU
+docker compose -f docker-compose.cpu.yml up -d
+
+# 2. Загрузка модели (выберите подходящую)
+docker exec -it qwen3-ollama-cpu ollama pull qwen3:1.7b  # рекомендуется
+
+# 3. Открыть приложение
+# http://localhost
+```
+
+### Рекомендуемые модели для CPU:
+
+| Модель | RAM | Скорость | Качество | Когда использовать |
+|--------|-----|----------|----------|-------------------|
+| **qwen3:0.6b** | 4 GB | ⭐⭐⭐⭐⭐ | ⭐⭐ | Тестирование |
+| **qwen3:1.7b** | 8 GB | ⭐⭐⭐⭐ | ⭐⭐⭐ | **Рекомендуется** |
+| **qwen3:4b** | 16 GB | ⭐⭐⭐ | ⭐⭐⭐⭐ | Хорошее качество |
+| **qwen3:8b** | 32 GB | ⭐⭐ | ⭐⭐⭐⭐⭐ | Максимум качества |
+
+### Ожидаемая производительность:
+
+- **Скорость**: 1-5 токенов/сек (в 10 раз медленнее GPU)
+- **Время ответа**: 1-5 минут на 500 токенов
+- **Подходит для**: коротких текстов, простых задач, тестирования
+
+### Подробная документация:
+Смотрите [CPU_DEPLOYMENT.md](./CPU_DEPLOYMENT.md) для полной инструкции.
+
+---
+
 ## 🔒 Развёртывание в закрытой сети (Air-Gapped)
 
 Для организаций без доступа к интернету доступно развёртывание с локальной моделью Qwen3.
@@ -223,7 +267,8 @@ bash scripts/deploy-airgap.sh
 
 | Вариант | Команда | Требования |
 |---------|---------|------------|
-| **Ollama** (проще) | `docker compose -f docker-compose.local.yml up -d` | 16+ GB RAM, GPU опционально |
+| **CPU only** (без GPU) | `docker compose -f docker-compose.cpu.yml up -d` | 16+ GB RAM, без GPU |
+| **Ollama** (с GPU) | `docker compose -f docker-compose.local.yml up -d` | 16+ GB RAM, GPU опционально |
 | **vLLM** (production) | `docker compose -f docker-compose.vllm.yml up -d` | 32+ GB RAM, NVIDIA GPU обязательно |
 
 ### Проверка работоспособности:
