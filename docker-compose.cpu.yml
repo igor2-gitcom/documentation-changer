@@ -1,0 +1,105 @@
+# ============================================
+# Docker Compose - Локальная модель БЕЗ GPU (CPU only)
+# ============================================
+# Для запуска на обычном компьютере без видеокарты
+#
+# Запуск: docker compose -f docker-compose.cpu.yml up -d
+# Рекомендуется: 16+ GB RAM, 8+ ядер CPU
+
+version: '3.8'
+
+services:
+  # ------------------------------------------
+  # Ollama - Локальный LLM сервер (CPU mode)
+  # ------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: qwen3-ollama-cpu
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-/root/.ollama
+    environment:
+      # Принудительно использовать CPU
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      # Ограничение памяти (опционально)
+      - OLLAMA_MAX_QUEUE=1
+    # БЕЗ секции GPU - работает на CPU
+    networks:
+      - qwen3-cpu-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    # Ограничение ресурсов (опционально)
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+        reservations:
+          memory: 8G
+
+  # ------------------------------------------
+  # Backend - API proxy
+  # ------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: qwen3-docs-backend-cpu
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      - QWEN_API_KEY=ollama
+      - QWEN_BASE_URL=http://ollama:11434/v1
+      - QWEN_MODEL=${QWEN_MODEL:-qwen3:4b}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost}
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - qwen3-cpu-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+  # ------------------------------------------
+  # Frontend - React + Vite (nginx)
+  # ------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qwen3-docs-frontend-cpu
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - qwen3-cpu-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  ollama-
+    driver: local
+
+networks:
+  qwen3-cpu-network:
+    driver: bridge
